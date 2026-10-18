@@ -48,6 +48,8 @@
   function offlineAnswer(book, pqs, q, opts = {}) {
     _slug = book.slug;
     const ix = index(book), lq = q.toLowerCase();
+    // a question written in French: the built-in assistant frames its answer in French (the course books are in English)
+    const fr = /\b(quel|quelle|quels|quelles|qu'est|pourquoi|comment|est-ce|les|des|une|dans|avec|pour|sur|selon|livre|cours)\b/.test(lq) && !/\b(the|what|is|are|how|of|and)\b/.test(lq);
     const out = { parts: [], cites: [] };
     const say = (t) => out.parts.push(t);
     const addCite = (d) => { const c = cite(d); if (!out.cites.some((x) => x.label === c.label)) out.cites.push(c); return c.label; };
@@ -171,6 +173,10 @@
     const hits = bm25(ix, quote || q, 4);
     const pqHits = /exam|past question|practice question|assess|examin|likely/.test(lq) ? pqs.map((p) => ({ p, s: tok(p.text).filter((t) => tok(q).includes(t)).length })).filter((x) => x.s > 0).sort((a, b) => b.s - a.s).slice(0, 2) : [];
     if (!hits.length && !pqHits.length) {
+      if (fr) {
+        say("Je n'ai pas trouvé ce point dans votre livre de cours, qui est rédigé en anglais. Essayez d'autres mots, éventuellement en anglais, consultez la table des matières ou posez la question dans la discussion du cours pour que votre facilitateur y réponde.");
+        out.none = true; return out;
+      }
       say("I could not find this in your course book. Try different words, look in the Contents, or ask in the course discussion so your facilitator can answer.");
       say("Tip: you can ask me to “summarise Unit 2”, “explain page 12”, “quiz me on this course” or about a practice question.");
       out.none = true; return out;
@@ -183,11 +189,12 @@
       const lo = ix.docs.find((x) => x.unit === d.unit && /Learning outcomes/i.test(x.stitle) && x.b && x.b.items && x.b.items.length);
       if (lo) say(`It supports this learning outcome: ${lo.b.items[0]} [${addCite(lo)}]`);
     } else {
-      say("Here is what your course book says:");
+      say(fr ? "Votre livre de cours est rédigé en anglais. Voici les passages qui répondent à votre question :" : "Here is what your course book says:");
       hits.forEach((h) => say(`- **${h.d.stitle || "Unit " + h.d.unit}** (Unit ${h.d.unit}): ${clip(h.d.text, 240)} [${addCite(h.d)}]`));
     }
     pqHits.forEach(({ p }) => { say(`**Related practice question** (${p.year}, Q${p.q}, ${p.marks} marks): ${clip(p.text, 180)} [PQ ${p.id}]`); out.cites.push({ label: "PQ " + p.id, href: C.link("pastq", { c: book.slug }) }); });
-    const hint = C.text && "aiLiveHint" in C.text ? C.text.aiLiveHint : "The built-in assistant quotes and points to the book. For fuller explanations in your own words, a live AI model can be connected in AI settings.";
+    const hint = fr && !(C.text && "aiLiveHint" in C.text) ? "L'assistant intégré cite le livre et indique les pages. Pour une explication rédigée en français, un modèle d'IA en ligne peut être connecté."
+      : C.text && "aiLiveHint" in C.text ? C.text.aiLiveHint : "The built-in assistant quotes and points to the book. For fuller explanations in your own words, a live AI model can be connected in AI settings.";
     if (hint) say(hint);
     return out;
   }

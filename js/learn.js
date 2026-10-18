@@ -179,7 +179,7 @@
     const st = C.quizStats(u, q.id);
     return el("div", { class: "card qcard" }, el("div", { class: "qk" }, el("span", { class: "pill" + (q.kind === "Draft" ? " grey" : ""), text: q.kind }), el("span", { class: "tiny muted", text: q.qs.length + " questions" })),
       el("h3", { text: q.title }),
-      st.n ? el("div", { class: "small" }, el("b", { text: `Best ${st.best}%` }), ` · ${st.n} attempt${st.n > 1 ? "s" : ""} · last ${C.ago(st.last.at)}`) : el("div", { class: "small muted", text: staff ? "Preview as a student" : "Not attempted yet" }),
+      st.n ? el("div", { class: "small" }, el("b", { text: `Best ${st.best}%` }), ` · ${st.n} attempt${st.n > 1 ? "s" : ""} · last ${C.ago(st.last.at)}`) : el("div", { class: "small muted", text: staff ? "Preview as a participant" : "Not attempted yet" }),
       st.n ? el("div", { class: "bar" }, el("i", { style: { width: st.best + "%", background: st.best >= 50 ? "var(--ok)" : "var(--alert)" } })) : null,
       el("div", { class: "btns" }, el("a", { class: "btn sm", href: `quiz.html?q=${encodeURIComponent(q.id)}` }, st.n ? "Retake" : staff ? "Preview" : "Start"),
         st.n ? el("a", { class: "btn sec sm", href: `quiz.html?q=${encodeURIComponent(q.id)}&review=1` }, "Review") : null,
@@ -492,7 +492,7 @@
       }
       all[u.id] = s; S.set(subsKey(x.id), all); return true;
     };
-    function closedElsewhere(rec) { if (finished) return; finished = true; run.stop && run.stop(); main.replaceChildren(el("div", { class: "crumb" }, el("a", { href: "exams.html", text: "Online exams" }), " / " + c.code)); done(rec); C.say("This assessment was submitted in another window."); }
+    function closedElsewhere(rec) { if (finished) return; finished = true; run.stop && run.stop(); main.replaceChildren(el("div", { class: "crumb" }, el("a", { href: "exams.html", text: "Assessments" }), " / " + c.code)); done(rec); C.say("This assessment was submitted in another window."); }
     let sub = preview ? subs()[u.id] : C.examFinalize(x, u.id);
     main.append(el("div", { class: "crumb" }, el("a", { href: "exams.html", text: "Assessments" }), " / " + c.code));
     const st = C.examState(x);
@@ -543,7 +543,7 @@
         if (left < 2 * MIN && !warned) { warned = true; C.say("Two minutes left. Your answers are saved."); }
       };
       const iv = setInterval(tick, 500); tick();
-      const onHide = () => { if (unloading || finished) return; if (document.hidden && !preview) { sub.events.push({ k: "hidden", at: Date.now() }); putSub(sub); } else if (!document.hidden) C.say("Leaving the exam page has been recorded."); };
+      const onHide = () => { if (unloading || finished) return; if (document.hidden && !preview) { sub.events.push({ k: "hidden", at: Date.now() }); putSub(sub); } else if (!document.hidden) C.say("Leaving the assessment page has been recorded."); };
       const onStore = (e) => { if (e.key && e.key.endsWith(subsKey(x.id))) { const rec = subs()[u.id]; if (rec && rec.status === "submitted") closedElsewhere(rec); } };
       document.addEventListener("visibilitychange", onHide); window.addEventListener("storage", onStore);
       window.onbeforeunload = () => { unloading = true; setTimeout(() => (unloading = false), 1500); return "Your assessment is in progress. Your answers are saved and the timer keeps running."; };
@@ -562,7 +562,7 @@
       const score = qs.reduce((a, q) => a + C.qMark(q, sub.ans[q._i]), 0);
       Object.assign(sub, { status: "submitted", end: auto ? Math.min(Date.now(), sub.start + x.dur * MIN, x.closes) : Date.now(), score, total: qs.length }); sub.events.push({ k: auto ? "auto-submit" : "submit", at: Date.now() });
       if (!preview) { putSub(sub); S.del("examActive:" + u.id); C.log(u, "exam-submit", { e: x.id }); }
-      main.replaceChildren(el("div", { class: "crumb" }, el("a", { href: "exams.html", text: "Online exams" }), " / " + c.code));
+      main.replaceChildren(el("div", { class: "crumb" }, el("a", { href: "exams.html", text: "Assessments" }), " / " + c.code));
       done(sub, auto);
     }
     function done(s, auto) {

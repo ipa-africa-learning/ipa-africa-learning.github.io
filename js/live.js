@@ -390,6 +390,7 @@
   C.ready(() => {
     if (C.page === "live") listPage();
     else if (C.page === "session") sessionPage();
-    else if (C.page === "liveroom") roomPage();
+    // the classroom is async: a redirect to sign-in must not surface as an error
+    else if (C.page === "liveroom") roomPage().catch((e) => { if (!e || e.message !== "redirect") console.error(e); });
   });
 })();

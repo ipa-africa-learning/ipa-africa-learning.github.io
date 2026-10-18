@@ -13,7 +13,7 @@ with public verification, and live sessions (online classes) with attendance and
   participant in an upcoming offering, facilitator, programme director, sponsor liaison, faculty author, helpdesk
   officer or administrator. No password is needed.
 - Use **Screens** and **Next** in the bar at the bottom of every page to walk through the main screens in order.
-- Everything you do is kept in your own browser only. Nothing is sent anywhere. **My profile > Reset demo data**
+- Everything you do is kept in your own browser only. Nothing is sent anywhere. **My profile > Reset the whole demo**
   starts again.
 
 ## Please note

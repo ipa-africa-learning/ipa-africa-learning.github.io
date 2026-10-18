@@ -422,7 +422,10 @@
   // ------------------------------------------------------------------ overview page: signed-in hint
   function indexPage() {
     const u = C.me(), h = $("#who"); if (!h || !u) return;
-    h.replaceChildren(el("div", { class: "banner flat" }, icon("user", "i lg"), el("div", { class: "small" }, "Signed in as ", el("b", { text: u.n }), ` (${C.roleName(u)}). `, el("a", { href: u.r === "s" ? "dashboard.html" : "staff.html", text: "Go to your home page" }))));
+    const home = u.r === "s" ? "dashboard.html" : "staff.html";
+    h.replaceChildren(el("div", { class: "banner flat" }, icon("user", "i lg"), el("div", { class: "small" }, "Signed in as ", el("b", { text: u.n }), ` (${C.roleName(u)}). `, el("a", { href: home, text: "Go to your home page" }))));
+    // once signed in, the hero's "Sign in" button leads home instead
+    $$('a.btn.red[href="login.html"]').forEach((b) => { b.setAttribute("href", home); b.replaceChildren(u.r === "s" ? "Go to my dashboard " : "Go to staff home ", icon("chev")); });
   }
 
   C.ready(() => {

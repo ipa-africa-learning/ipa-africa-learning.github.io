@@ -24,6 +24,8 @@
     const post = (by, at, text, extra = {}) => ({ id: C.uid("p"), by: by.id || by, at, text, helpful: [], flags: [], ...extra });
     if (tutor) T.push({ id: "t-welcome", unit: 0, title: `Welcome to ${c.code}: read this first`, by: tutor.id, at: t0, pinned: true, posts: [
       post(tutor, t0, `Welcome to ${c.title}. Your course book is on the course page; read Unit 1 this week and take the Unit 1 self-check in Quizzes.\nAsk questions about each unit in the unit threads so that colleagues from other parliaments benefit from the answers. I reply within two working days.`, { official: true })] });
+    // no current or forthcoming cohort yet: only the facilitator's welcome, no participants' threads
+    if (!roster.length) return T;
     const a = pick(), b = pick(), d = pick();
     T.push({ id: "t-u1", unit: 1, title: "Unit 1: how should we use the learning outcomes?", by: a.id, at: t0 + 2 * DAY, posts: [
       post(a, t0 + 2 * DAY, "Are the learning outcomes in section 1.2 what the final assessment is based on? I want to plan my study around committee sittings."),
@@ -54,7 +56,7 @@
     const list = el("div", { class: "tlist" });
     main.append(el("div", { class: "btns between" }, el("div", {}, el("div", { class: "label", text: c.code }), el("h1", { text: "Course discussion" })),
       canPost ? el("button", { class: "btn", onclick: () => newThread(u, slug, isTutor) }, icon("plus"), "Start a discussion") : null),
-      acc === "retro" ? el("div", { class: "banner warn" }, icon("eye", "i lg"), el("div", { class: "small", text: "Read-only: as an alumnus you can read this discussion but not post." })) : null,
+      acc === "retro" ? el("div", { class: "banner warn" }, icon("eye", "i lg"), el("div", { class: "small", text: "Read-only: as an alumnus you can read this discussion but not post." })) : "",
       el("p", { class: "small muted", text: `Open to the ${C.roster(slug).length} participants in current and forthcoming cohorts and the facilitators. Discussions are non-partisan; facilitators moderate reported posts.` }),
       el("div", { class: "toolbar" }, unitSel, q), list);
     const draw = () => {
