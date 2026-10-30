@@ -79,68 +79,161 @@
   }
 
   // ------------------------------------------------------------------ dashboard
-  function courseCard(u, slug, retro) {
-    const c = C.course(slug), p = C.progress(slug, u), off = C.offline(slug, u);
-    const b = el("div", { class: "body" }, el("h3", { text: c.title }));
-    if (retro) b.append(el("div", { class: "meta" }, el("span", { text: p ? p + "% read · notes kept" : "Notes and bookmarks kept" }), el("span", { class: "pill grey" }, icon("lock", "i sm"), "Read-only")));
-    else b.append(el("div", { class: "bar" }, el("i", { style: { width: Math.max(p, 2) + "%" } })),
-      el("div", { class: "meta" }, el("span", { text: p ? p + "% read" : "Not started" }), off ? el("span", { class: "pill ok" }, icon("check", "i sm"), "Offline ready") : el("span", { class: "pill grey" }, icon("dl", "i sm"), "Online only")));
-    return el("a", { class: "card cc" + (retro ? " retro" : ""), href: retro ? `reader.html?c=${slug}` : `course-${slug}.html` }, el("div", { class: "top2" }, el("div", { class: "code", text: c.code })), b);
+  const isoDay = (t) => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const midnight = (t) => { const d = new Date(t); d.setHours(0, 0, 0, 0); return d.getTime(); };
+  const hm = (t) => new Date(t).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" });
+  const dm = (t) => new Date(t).toLocaleDateString("en-GB", { day: "numeric", month: "short" });
+  const calDays = (t) => Math.round((midnight(t) - midnight(Date.now())) / DAY);
+  // "Closes today, 23:59", "Closes tomorrow, 17:00", "Closes in 4 days"
+  C.closesIn = (t) => { const n = calDays(t); return n <= 0 ? `Closes today, ${hm(t)}` : n === 1 ? `Closes tomorrow, ${hm(t)}` : `Closes in ${n} days`; };
+  const reduced = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+  // course card: white card, cover miniature, code chip, title, gold progress, footer with status and one action
+  function courseCard(u, slug, retro, until) {
+    const c = C.course(slug), p = C.progress(slug, u), off = C.offline(slug, u), pg = C.ud(u).get("pos", {})[slug];
+    const status = retro ? (until ? `Read-only until ${C.fmt(until)}` : "Read-only") : (p || pg ? [p ? `${p}% read` : "", pg ? "p. " + pg : ""].filter(Boolean).join(" · ") : "Not started") + (off ? " · offline" : "");
+    return el("a", { class: "card cc" + (retro ? " retro" : ""), href: retro ? `reader.html?c=${slug}` : `course-${slug}.html` },
+      el("div", { class: "cch" }, C.mcover(c, retro ? "alum" : ""), el("div", { class: "cct" },
+        el("div", { class: "chips" }, el("span", { class: "chip" + (retro ? " gold" : ""), text: c.code }), retro ? el("span", { class: "chip gold", text: "Alumni" }) : null), el("h3", { text: c.title }))),
+      retro ? null : el("div", { class: "bar" }, el("i", { style: { width: Math.max(p, 2) + "%" } })),
+      el("div", { class: "ccf" }, el("span", { text: status }), el("span", { class: "go" }, retro ? "Open book" : "Open course", icon("chev", "i sm"))));
   }
   // certificates: one per completed programme, with a code anyone can verify
   C.certCode = (uid, offId) => "IPA-" + offId.replace(/-/g, "") + "-" + (C.hashNum(uid + "|" + offId) % 1e6).toString().padStart(6, "0");
   C.certsOf = (u) => (C.enrol(u).alumni || []).map((a) => ({ P: a.P, o: a.o, code: C.certCode(u.id, a.o.id), issued: new Date(a.o.end + "T00:00:00").getTime() + 2 * DAY }));
+  // what is coming up for a participant: live sessions, assessments and network meetings, each with a day for the week ribbon
+  function comingUp(u, e) {
+    const now = Date.now(), items = [];
+    if (C.liveUpcomingFor) C.liveUpcomingFor(u).forEach((s) => {
+      const live = C.liveState(s) === "open", code = C.course(s.course).code, prov = C.liveProviders[s.prov].name;
+      items.push({ kind: live ? "live" : "routine", mark: "live", at: s.start, k: live ? `Live now · ${prov}` : `Live session · ${prov}`, t: s.title,
+        s: live ? `${code} · ${hm(s.start)} to ${hm(s.start + s.dur * 60000)}` : `${code} · ${dm(s.start)}, ${hm(s.start)}`, href: "session.html?s=" + encodeURIComponent(s.id) });
+    });
+    // assessments: the same assessment in several courses with the same window is one row
+    const ex = {};
+    if (C.examList) C.examList(e.current).forEach((x) => {
+      if ((S.get("examsubs:" + x.id, {})[u.id] || {}).status === "submitted") return;
+      const st = C.examState(x); if (st === "closed") return;
+      const key = [x.title, st, st === "open" ? x.closes : x.opens].join("|");
+      (ex[key] = ex[key] || { x, st, list: [] }).list.push(x);
+    });
+    Object.values(ex).forEach(({ x, st, list }) => {
+      const codes = list.map((y) => C.course(y.course).code), what = codes.length > 2 ? `${codes.slice(0, 2).join(", ")} and ${codes.length - 2} more` : codes.join(" and ");
+      const href = list.length > 1 ? "exams.html" : st === "open" ? `exam.html?e=${encodeURIComponent(x.id)}` : "exams.html";
+      if (st === "open") { const soon = calDays(x.closes) <= 7; items.push({ kind: soon ? "due" : "routine", mark: "due", at: x.closes, k: soon ? C.closesIn(x.closes) : "Assessment open", t: `${x.title}: ${what}`, s: `Closes ${dm(x.closes)}, ${hm(x.closes)}`, href }); }
+      else items.push({ kind: "routine", mark: "other", at: x.opens, k: "Assessment", t: `${x.title}: ${what}`, s: `Opens ${dm(x.opens)}, ${hm(x.opens)}`, href });
+    });
+    if (C.groups) C.groups().filter((g) => g.members.includes(u.id)).forEach((g) => g.meetings.filter((m) => m.at > now).forEach((m) =>
+      items.push({ kind: "routine", mark: "other", at: m.at, k: "Cohort network", t: m.title, s: `${hm(m.at)} · ${g.name}`, href: `group.html?g=${g.id}#meet` })));
+    const rank = { live: 0, due: 1, routine: 2 };
+    return items.sort((a, b) => rank[a.kind] - rank[b.kind] || a.at - b.at);
+  }
+  // the This week ribbon: Monday to Sunday, today marked, up to three markers a day (live, closes, other)
+  function weekRibbon(items, pick) {
+    const t0 = midnight(Date.now()), mon = t0 - ((new Date(t0).getDay() + 6) % 7) * DAY;
+    const names = { live: "live session", due: "closing", other: "other" };
+    return el("ol", { class: "week", "aria-label": "This week" }, ...Array.from({ length: 7 }, (_, i) => {
+      const d = new Date(mon + i * DAY + 3600000), iso = isoDay(d), today = midnight(d) === t0, past = midnight(d) < t0;
+      const marks = ["live", "due", "other"].filter((m) => items.some((x) => x.mark === m && isoDay(x.at) === iso));
+      const long = d.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+      return el("li", {}, el("button", { type: "button", class: "wday" + (today ? " today" : "") + (past ? " past" : ""), "aria-current": today ? "date" : null, "data-day": iso,
+        "aria-label": `${long}${today ? " (today)" : ""}: ${marks.length ? marks.map((m) => names[m]).join(", ") : "nothing scheduled"}`, onclick: () => pick(iso, long) },
+        el("span", { class: "wd", text: d.toLocaleDateString("en-GB", { weekday: "short" }) }), el("span", { class: "dn", text: d.getDate() }),
+        el("span", { class: "wm", "aria-hidden": "true" }, ...marks.map((m) => el("i", { class: "m-" + m })))));
+    }));
+  }
   function dashboardPage() {
     const u = C.requireUser(), main = $("#main");
     if (C.isStaff(u)) { location.replace("staff.html"); return; }
-    const e = C.enrol(u), ud = C.ud(u);
+    const e = C.enrol(u), ud = C.ud(u), pos = ud.get("pos", {}), prog = ud.get("prog", {});
     const first = u.n.split(" ")[0];
-    const cont = Object.entries(ud.get("pos", {})).filter(([s]) => e.current.includes(s)).sort((a, b) => (ud.get("prog", {})[b[0]] || 0) - (ud.get("prog", {})[a[0]] || 0))[0];
-    const left = el("div", { class: "stack0" });
+    const contOf = (list) => Object.keys(pos).filter((s) => list.includes(s)).sort((a, b) => (prog[b] || 0) - (prog[a] || 0))[0];
+    const cont = contOf(e.current) || e.current[0] || contOf(e.retro);
+    const until = e.alumni.filter((a) => Date.now() < a.until).map((a) => a.until)[0];
+    // programme banner with the hemicycle: one seat per course
+    const seats = e.current.length ? e.current : e.retro;
+    const curSeat = e.current.includes(cont) ? cont : e.current.find((s) => (prog[s] || 0) < 95);
+    const states = seats.map((s) => (!e.current.length ? "alum" : (prog[s] || 0) >= 95 ? "done" : s === curSeat ? "cur" : "todo"));
+    const started = e.current.filter((s) => (prog[s] || 0) > 0 || pos[s]).length;
+    let cap, sub;
     if (e.K) {
-      const st = C.offState(e.K);
-      left.append(el("div", { class: "banner" }, icon("cal", "i lg"), el("div", {}, el("b", { text: `${e.P.short}, ${e.K.id}. ` }),
-        `${C.fmtDay(e.K.start)} to ${C.fmtDay(e.K.end)} · ${e.K.venue}. ${st === "upcoming" ? "Your online preparation is open now." : "Read online, download for offline study, or print a personal copy."}`)));
-    } else left.append(el("div", { class: "banner" }, icon("cal", "i lg"), el("div", {}, el("b", { text: "No current programme. " }), "Browse the calendar to join another programme; your alumni access continues below.", " ", el("a", { href: "programmes.html#calendar", text: "Programmes and calendar" }))));
-    if (cont) left.append(el("a", { class: "card pad contcard", href: `reader.html?c=${cont[0]}` }, icon("book", "i lg"), el("div", {}, el("div", { class: "label", text: "Continue reading" }), el("b", { text: `${C.course(cont[0]).code} ${C.course(cont[0]).title}` }), el("div", { class: "small muted", text: `Page ${cont[1]} · ${C.progress(cont[0], u)}% read` })), icon("chev", "i go")));
-    if (e.current.length) left.append(el("div", { class: "sech" }, el("h2", { text: "My programme" }), el("span", { class: "muted small", text: "Full access" })), el("div", { class: "grid g-courses" }, ...e.current.map((s) => courseCard(u, s))));
-    const until = e.alumni.filter((a) => Date.now() < a.until).map((a) => C.fmt(a.until));
-    left.append(el("div", { class: "sech" }, el("h2", { text: "Alumni access" }), e.retro.length ? el("span", { class: "pill" }, icon("eye", "i sm"), "Read-only until " + until[0]) : el("span", { class: "muted small", text: "None yet: completed programmes appear here for twelve months." })));
-    if (e.retro.length) left.append(el("div", { class: "grid g-courses" }, ...e.retro.map((s) => courseCard(u, s, true))));
+      const st = C.offState(e.K), s0 = new Date(e.K.start + "T00:00:00").getTime(), e0 = new Date(e.K.end + "T00:00:00").getTime();
+      const weeks = Math.max(1, Math.ceil((e0 - s0 + DAY) / (7 * DAY))), wk = Math.min(weeks, Math.max(1, Math.floor((midnight(Date.now()) - s0) / (7 * DAY)) + 1));
+      cap = st === "upcoming" ? `${seats.length} courses · starts ${C.fmtDay(e.K.start)}` : `${started} of ${seats.length} courses started · Week ${wk} of ${weeks}`;
+      sub = [`${C.fmtDay(e.K.start)} to ${C.fmtDay(e.K.end)} · ${e.K.venue}. `, el("span", { class: "hide-ph", text: st === "upcoming" ? "Your online preparation is open now." : "Read online, download for offline study, or print a personal copy." })];
+    } else { cap = seats.length ? `${seats.length} alumni courses · read-only until ${C.fmt(until)}` : "No courses at present"; sub = "Browse the calendar to join another programme; your alumni access continues below."; }
+    const items = comingUp(u, e);
+    const upList = el("div", { class: "uplist" + (items.length <= 6 ? " few6" : "") });
+    const upCard = el("section", { class: "card pad upcard", id: "upcoming", "aria-labelledby": "uph" }, el("h2", { id: "uph", class: "h3", text: "Coming up" }), upList);
+    const seeAll = el("button", { type: "button", class: "linkbtn seeall", "aria-expanded": "false", text: `See all (${items.length})`,
+      onclick: () => { const on = upList.classList.toggle("all"); seeAll.setAttribute("aria-expanded", String(on)); seeAll.textContent = on ? "Show fewer" : `See all (${items.length})`; } });
+    upList.append(...(items.length ? items.map((x, i) => el("a", { class: "uprow " + x.kind + (i >= 3 ? " m3" : "") + (i >= 6 ? " more" : ""), href: x.href, "data-day": isoDay(x.at) },
+      el("div", { class: "d", "aria-hidden": "true" }, el("b", { text: new Date(x.at).getDate() }), el("small", { text: new Date(x.at).toLocaleDateString("en-GB", { month: "short" }).toUpperCase() })),
+      el("div", { class: "ut" }, el("div", { class: "k", text: x.k }), el("b", { text: x.t }), el("div", { class: "muted small", text: x.s })))) : [el("p", { class: "small muted", text: "Nothing scheduled." })]));
+    if (items.length > 3) upCard.append(seeAll);
+    const pick = (iso, long) => {
+      const rows = $$(`.uprow[data-day="${iso}"]`, upList);
+      if (!rows.length) return C.say(`Nothing is scheduled on ${long}.`);
+      if (rows.some((r) => getComputedStyle(r).display === "none")) { upList.classList.add("all"); seeAll.setAttribute("aria-expanded", "true"); seeAll.textContent = "Show fewer"; }
+      upCard.scrollIntoView({ behavior: reduced() ? "auto" : "smooth", block: "start" });
+      $$(".uprow.pick", upList).forEach((r) => r.classList.remove("pick"));
+      rows.forEach((r) => { void r.offsetWidth; r.classList.add("pick"); });
+      rows[0].focus({ preventScroll: true });
+    };
+    const hemi = C.hemicycle(states, e.current.length ? `Programme progress: ${cap}` : `Alumni courses: ${cap}`);
+    const banner = el("section", { class: "card pbanner", "aria-label": "My programme" },
+      el("div", { class: "pbtop" }, el("div", { class: "pbh" }, hemi),
+        el("div", { class: "pbt" }, el("div", { class: "label", text: e.K ? `Programme · ${e.K.id}` : "Alumni access" }),
+          el("h2", {}, e.P ? el("a", { href: `programme-${e.P.slug}.html`, text: e.P.name }) : "No current programme"),
+          el("div", { class: "pbcap", text: cap }), el("div", { class: "small muted" }, sub),
+          e.K ? null : el("a", { class: "small", href: "programmes.html#calendar", text: "Programmes and calendar" }))),
+      el("div", { class: "weekwrap" }, el("div", { class: "label", text: "This week" }), weekRibbon(items, pick)));
+    // Continue reading: the single deep-navy hero of the page
+    let hero = null;
+    if (cont) {
+      const c = C.course(cont), p = C.progress(cont, u), pg = pos[cont];
+      hero = el("a", { class: "dhero", href: `reader.html?c=${cont}` }, C.mcover(c, e.current.includes(cont) ? "" : "alum"),
+        el("div", { class: "dht" }, el("div", { class: "ey", text: pg ? (p ? `Continue reading · ${p}% read` : "Continue reading") : "Start reading" }), el("div", { class: "h", text: `${c.code} ${c.title}` }),
+          el("div", { class: "s", text: pg ? `Page ${pg}${e.current.includes(cont) ? "" : " · alumni access, read-only"}` : "Your first course book is ready: begin on page 1." }),
+          el("div", { class: "bar" }, el("i", { style: { width: Math.max(p, 2) + "%" } }))),
+        el("span", { class: "btn red" }, icon("book"), pg ? "Open book" : "Start reading"));
+    }
+    const dmain = el("div", { class: "dmain" });
+    if (hero) dmain.append(hero);
+    if (e.current.length) dmain.append(el("section", { class: "myprog" }, el("div", { class: "sech" }, el("h2", { text: "My programme" }), el("span", { class: "muted small", text: "Full access" })),
+      el("div", { class: "grid g-courses" }, ...e.current.map((s) => courseCard(u, s)))));
+    const alumni = el("section", { class: "alumni" + (e.retro.length ? "" : " none") });
+    const accBody = el("div", { class: "accbody", id: "accbody" });
+    if (e.retro.length) {
+      const tog = el("button", { type: "button", class: "card acctog", "aria-expanded": "false", "aria-controls": "accbody", onclick: () => { const on = alumni.classList.toggle("open"); tog.setAttribute("aria-expanded", String(on)); } },
+        el("span", { class: "chip gold", text: "Alumni" }), el("span", { class: "at" }, el("b", { text: "Alumni access" }), el("span", { class: "small muted", text: `${e.retro.length} courses · read-only until ${C.fmt(until)}` })), icon("chev", "i go"));
+      accBody.append(el("div", { class: "grid g-courses" }, ...e.retro.map((s) => courseCard(u, s, true, until))));
+      alumni.append(el("div", { class: "sech" }, el("h2", { text: "Alumni access" }), el("span", { class: "pill gold" }, icon("eye", "i sm"), "Read-only until " + C.fmt(until))), tog, accBody);
+    } else alumni.append(el("div", { class: "sech" }, el("h2", { text: "Alumni access" }), el("span", { class: "muted small", text: "None yet: completed programmes appear here for twelve months." })));
+    dmain.append(alumni);
 
-    const side = el("aside", { class: "stack" });
-    const items = [];
-    if (C.examList) C.examList(e.current).forEach((x) => { const s = (S.get("examsubs:" + x.id, {})[u.id] || {}); if (s.status === "submitted") return; const st = C.examState(x); if (st === "open") items.push([x.opens, "Assessment open", `${x.title}: ${C.course(x.course).code}`, `Closes ${C.fmtTime(x.closes)}`, `exam.html?e=${x.id}`, true]); else if (st === "upcoming") items.push([x.opens, "Assessment", `${x.title}: ${C.course(x.course).code}`, `Opens ${C.fmtTime(x.opens)}`, "exams.html"]); });
-    if (C.groups) C.groups().filter((g) => g.members.includes(u.id)).forEach((g) => g.meetings.filter((m) => m.at > Date.now()).forEach((m) => items.push([m.at, "Cohort network", m.title, `${C.fmtTime(m.at)} · ${g.name}`, `group.html?g=${g.id}#meet`])));
-    if (C.liveUpcomingFor) C.liveUpcomingFor(u).forEach((s) => { const live = C.liveState(s) === "open";
-      items.push([live ? Date.now() - 1 : s.start, live ? "Live session: join now" : "Live session", `${s.title}: ${C.course(s.course).code}`, `${C.fmtTime(s.start)} · ${C.liveProviders[s.prov].name}`, "session.html?s=" + encodeURIComponent(s.id), live]); });
-    // a live session open now comes before open assessments
-    const hot = items.filter((x) => x[5]).sort((a, b) => (/^Live/.test(b[1]) ? 1 : 0) - (/^Live/.test(a[1]) ? 1 : 0)), rest = items.filter((x) => !x[5]).sort((a, b) => a[0] - b[0]);
-    const shown = [...hot.slice(0, 2), ...rest.slice(0, 4)];
-    side.append(el("div", { class: "card pad" }, el("h3", { text: "Coming up" }), hot.length > 2 ? el("a", { class: "small", href: "exams.html", text: `${hot.length} assessments are open now · see all` }) : null,
-      ...(shown.length ? shown.map(([at, k, t, s, href, h]) => el("a", { class: "uprow" + (h ? " hot" : ""), href }, el("div", { class: "d" }, el("b", { text: new Date(at).getDate() }), el("small", { text: new Date(at).toLocaleDateString("en-GB", { month: "short" }).toUpperCase() })),
-        el("div", {}, el("div", { class: "tiny label", text: k }), el("b", { text: t }), el("div", { class: "muted small", text: s })))) : [el("p", { class: "small muted", text: "Nothing scheduled." })])));
+    const side = el("aside", { class: "dside", "aria-label": "Coming up and more" }, upCard);
     const certs = C.certsOf(u);
-    side.append(el("div", { class: "card pad" }, el("h3", {}, icon("check"), " Certificates"),
+    side.append(el("div", { class: "card pad sidecard" }, el("h3", {}, icon("check"), " Certificates"),
       el("p", { class: "small", text: certs.length ? `${certs.length} certificate${certs.length > 1 ? "s" : ""} · ${certs.reduce((a, c) => a + c.P.cpd, 0)} CPD hours` : "Your certificate appears here when you complete your programme." }),
       el("a", { class: "btn sec sm", href: "certificates.html", text: "My certificates" })));
     if (C.quizzesFor && e.current.length) {
       const qs = e.current.flatMap((s) => C.quizzesFor(s)), done = qs.filter((q) => C.quizStats(u, q.id).n);
-      side.append(el("div", { class: "card pad" }, el("h3", {}, icon("quiz"), " Quizzes"), el("p", { class: "small", text: `${done.length} of ${qs.length} practice quizzes completed.` }), el("div", { class: "bar mt" }, el("i", { style: { width: (qs.length ? done.length / qs.length * 100 : 0) + "%" } })), el("a", { class: "btn sec sm mt", href: "quizzes.html", text: "Open quizzes" })));
+      side.append(el("div", { class: "card pad sidecard" }, el("h3", {}, icon("quiz"), " Quizzes"), el("p", { class: "small", text: `${done.length} of ${qs.length} practice quizzes completed.` }), el("div", { class: "bar mt" }, el("i", { style: { width: (qs.length ? done.length / qs.length * 100 : 0) + "%" } })), el("a", { class: "btn sec sm mt", href: "quizzes.html", text: "Open quizzes" })));
     }
     if (C.groups) {
       const all = C.groups(), mine = all.filter((g) => g.members.includes(u.id)), inv = all.filter((g) => g.invites.includes(u.id));
-      side.append(el("div", { class: "card pad" }, el("h3", {}, icon("users"), " Cohort networks"),
+      side.append(el("div", { class: "card pad sidecard" }, el("h3", {}, icon("users"), " Cohort networks"),
         inv.length ? el("div", { class: "banner flat mt" }, icon("bell"), el("div", { class: "small" }, el("b", { text: `${inv.length} invitation${inv.length > 1 ? "s" : ""}. ` }), el("a", { href: "groups.html", text: "View" }))) : null,
         ...mine.slice(0, 3).map((g) => el("a", { class: "grow-link", href: "group.html?g=" + g.id }, el("span", { class: "gav sm", text: g.name.split(" ").map((x) => x[0]).slice(0, 2).join("") }), el("span", { text: g.name }))),
         el("a", { class: "btn sec sm mt", href: "groups.html", text: mine.length ? "All my networks" : "Create or join a network" })));
     }
-    side.append(el("div", { class: "card pad aicard" }, el("h3", {}, icon("spark"), " AI study assistant"),
+    if (e.current.length) side.append(el("div", { class: "card pad sidecard" }, el("h3", {}, icon("spark"), " AI study assistant"),
       el("p", { class: "small muted", text: "Explanations, summaries and practice from your course books and practice questions, with page references. Included in your programme." }),
       el("a", { class: "btn sec sm", href: "ai.html", text: "Open the assistant" })));
+    const live = C.liveBar(u, "inline");
     main.append(el("div", { class: "crumb" }, "Dashboard"), el("h1", { text: `Welcome back, ${first}` }),
-      el("div", { class: "muted" }, e.P ? el("a", { href: `programme-${e.P.slug}.html`, text: e.P.name }) : "Alumnus", ` · ${u.pos} · ${C.orgName(u.o)} · ${u.id}`),
-      el("div", { class: "two" }, left, side));
+      el("div", { class: "muted" }, `${u.pos} · ${C.orgName(u.o)} · ${u.id}`),
+      el("div", { class: "dash" }, banner, live, dmain, side));
   }
 
   // ------------------------------------------------------------------ course page (static shell enhanced here)
@@ -150,6 +243,15 @@
     if (st) st.replaceChildren(el("span", { class: "pill " + (acc === "full" || acc === "staff" ? "ok" : acc === "retro" ? "" : "grey") }, icon(acc === "preview" ? "lock" : acc === "retro" ? "eye" : "check", "i sm"), u ? C.accessLabel[acc] : "Sign in for full access"));
     const p = C.progress(slug, u);
     const pb = $("#cprog"); if (pb) { pb.style.width = Math.max(p, 2) + "%"; $("#cprogt").textContent = u ? `${p}% read · bookmarks and notes are saved to your account` : "Sign in to track your reading"; }
+    // hemicycle of the course's units: done, the unit being read, to come (read-only for alumni)
+    const hmc = $("#chemi");
+    if (hmc) {
+      const starts = (hmc.dataset.units || "").split(",").map(Number).filter(Boolean), n = starts.length, pg = u ? C.ud(u).get("pos", {})[slug] || 0 : 0;
+      const cur = pg ? starts.filter((x) => x <= pg).length || 1 : 0;
+      const states = starts.map((_, i) => (acc === "retro" ? "alum" : !pg ? "todo" : i + 1 < cur ? "done" : i + 1 === cur ? "cur" : "todo"));
+      const cap = acc === "retro" ? `${n} units · read-only` : pg ? `Unit ${cur} of ${n}${p ? ` · ${p}% read` : ""}` : `${n} units · not started`;
+      hmc.replaceChildren(C.hemicycle(states, "Course progress: " + cap), el("div", { class: "hcap", text: cap }));
+    }
     const ed = S.get("edition:" + slug, null); if (ed && $("#cedition")) $("#cedition").textContent = `Edition ${ed.n} · updated ${C.fmt(ed.at)}${ed.note ? ": " + ed.note : ""}`;
     const dl = $("#cdl");
     if (dl) {
@@ -175,7 +277,7 @@
     if (disc) {
       if (acc === "full" || acc === "retro" || acc === "staff") {
         const f = C.forum(slug).slice().sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0) || b.posts[b.posts.length - 1].at - a.posts[a.posts.length - 1].at).slice(0, 4);
-        disc.replaceChildren(...f.map((t) => el("a", { class: "trow sm", href: `forum.html?c=${slug}&t=${t.id}` }, el("div", { class: "tt" }, el("b", { text: t.title }), el("div", { class: "tiny muted", text: `${t.posts.length - 1} replies · ${C.ago(t.posts[t.posts.length - 1].at)}` })))));
+        disc.replaceChildren(...f.map((t) => el("a", { class: "trow sm", href: `forum.html?c=${slug}&t=${t.id}` }, el("div", { class: "tt" }, el("b", { text: t.title }), el("div", { class: "tiny muted", text: `${t.posts.length - 1} repl${t.posts.length === 2 ? "y" : "ies"} · ${C.ago(t.posts[t.posts.length - 1].at)}` })))));
       } else disc.replaceChildren(el("p", { class: "small muted", text: "Open to participants in the current cohort of this programme." }));
     }
     const ann = $("#cann");
@@ -277,7 +379,7 @@
     const errs = S.get("errata", []).filter((x) => cs.includes(x.slug));
     if (errs.length) main.append(el("div", { class: "sech" }, el("h2", { text: "Course-book error reports" })), el("div", { class: "stack" }, ...errs.map((x) => el("div", { class: "card pad" }, el("div", { class: "small muted", text: `${x.ref} · ${C.course(x.slug).code}${x.page ? " · p. " + x.page : ""} · ${who(x.by).n} · ${C.fmtTime(x.at)}` }), el("p", { text: x.text }),
       el("div", { class: "btns" }, x.page ? el("a", { class: "btn sec sm", href: `reader.html?c=${x.slug}&p=${x.page}`, text: "Open page" }) : null, x.status === "open" ? el("button", { class: "btn sm", onclick: () => { const a = S.get("errata", []); a.find((y) => y.ref === x.ref).status = "fixed"; S.set("errata", a); location.reload(); }, text: "Mark as fixed" }) : el("span", { class: "pill ok", text: "Fixed" }))))));
-    main.append(el("div", { class: "sech" }, el("h2", { text: "My courses" })), el("div", { class: "tablewrap card" }, el("table", { class: "t" }, el("tr", {}, ...["Course", "Participants", "Edition", ""].map((h) => el("th", { text: h }))), ...rows)));
+    main.append(el("div", { class: "sech" }, el("h2", { text: "My courses" })), el("div", { class: "tablewrap card" }, el("table", { class: "t" }, el("tr", {}, ...["Course", "Participants", "Edition", ""].map((h, i) => el("th", { class: i === 1 || i === 2 ? "n" : null, text: h }))), ...rows)));
     if (C.liveUpcomingFor) {
       const ls = C.liveUpcomingFor(u, 21);
       main.append(el("div", { class: "sech" }, el("h2", { text: "Live sessions" }), el("a", { class: "btn sec sm", href: "live.html", text: "All live sessions" })),

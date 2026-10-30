@@ -147,6 +147,9 @@
   const attempts = (u, id) => C.ud(u).get("quiz:" + id, []);
   C.quizStats = (u, id) => { const a = attempts(u, id); return { n: a.length, best: a.length ? Math.max(...a.map((x) => x.pct)) : null, last: a[a.length - 1] || null }; };
 
+  // ------------------------------------------------------------------ the Assessments hub tabs (participants and the staff who set assessments)
+  const hub = (u, k) => (u.r === "s" || ["t", "c", "a"].includes(u.r) ? C.hubTabs(k) : el("span", { hidden: true }));
+
   // ------------------------------------------------------------------ quizzes list page
   function quizzesPage() {
     const u = C.requireUser(), main = $("#main");
@@ -155,7 +158,7 @@
     const mine = staff ? C.staffCourses(u) : e.current;
     const pick = C.Q.get("c");
     const courses = pick && C.course(pick) ? [pick] : mine;
-    main.append(el("div", { class: "crumb" }, el("a", { href: staff ? "staff.html" : "dashboard.html", text: "Home" }), " / Quizzes"),
+    main.append(el("div", { class: "crumb" }, el("a", { href: staff ? "staff.html" : "dashboard.html", text: "Home" }), " / ", el("a", { href: "exams.html", text: "Assessments" }), " / Quizzes"), hub(u, "quizzes"),
       el("div", { class: "btns between" }, el("h1", { text: "Quizzes and self-checks" }), staff ? el("button", { class: "btn", onclick: () => buildQuiz(mine) }, icon("plus"), "Create a quiz") : null),
       el("p", { class: "muted", text: staff ? "Preview the self-checks in your courses and publish your own quizzes. Participants’ attempts are saved on their device in this prototype." : "Practice quizzes for the courses of your programme. They do not count towards your certificate. Retake them as often as you like; your best score is kept." }));
     const filter = el("select", { class: "input", "aria-label": "Course" }, el("option", { value: "", text: staff ? "All my courses" : "All my programme courses" }),
@@ -279,7 +282,7 @@
     const staff = C.isStaff(u), e = C.enrol(u);
     const mine = staff ? C.staffCourses(u) : [...e.current, ...e.retro];
     const scope = C.Q.get("c") || "mine";
-    main.append(el("div", { class: "crumb" }, el("a", { href: staff ? "staff.html" : "dashboard.html", text: "Home" }), " / Practice questions"),
+    main.append(el("div", { class: "crumb" }, el("a", { href: staff ? "staff.html" : "dashboard.html", text: "Home" }), " / ", el("a", { href: "exams.html", text: "Assessments" }), " / Practice questions"), hub(u, "pastq"),
       el("div", { class: "btns between" }, el("h1", { text: "Practice questions" }), staff ? el("button", { class: "btn", onclick: () => addPq(mine) }, icon("plus"), "Add a practice question") : null),
       el("p", { class: "muted", text: "Assessment-style questions with marking guides, by course and year. Practise an answer, compare it with the guide, or ask the AI assistant to explain what the assessor is looking for." }),
       el("div", { class: "banner" }, icon("flag", "i lg"), el("div", { class: "small", text: "Sample questions written for the prototype. Faculty authors would add their own questions and marking guides here." })));
@@ -381,7 +384,7 @@
   function examsPage() {
     const u = C.requireUser(), main = $("#main");
     const staff = C.isStaff(u);
-    main.append(el("div", { class: "crumb" }, el("a", { href: staff ? "staff.html" : "dashboard.html", text: "Home" }), " / Assessments"));
+    main.append(el("div", { class: "crumb" }, el("a", { href: staff ? "staff.html" : "dashboard.html", text: "Home" }), " / Assessments"), hub(u, "exams"));
     if (!staff) return studentExams(u, main);
     if (!["t", "c", "a"].includes(u.r)) { main.append(el("h1", { text: "Assessments" }), el("p", { text: "Assessments are managed by facilitators and programme directors." })); return; }
     staffExams(u, main);

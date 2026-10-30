@@ -147,6 +147,32 @@
   // ------------------------------------------------------------ uniform book cover
   C.cover = (c, cls = "") => el("div", { class: "cover " + cls, "aria-label": "Course book cover" },
     el("small", { text: "IPA AFRICA COURSE BOOK" }), el("span", { class: "ct", text: c.title }), el("span", { class: "cc2", text: c.code }), el("i"));
+  // miniature of the same cover (44 x 60) for course cards, rows and the Continue reading hero
+  C.mcover = (c, cls = "") => { const m = c.code.match(/^([A-Z]+)(\d+)$/) || [0, c.code, ""]; return el("span", { class: "mcover " + cls, "aria-hidden": "true" }, el("b", {}, el("span", { text: m[1] }), el("span", { text: m[2] })), el("i")); };
+
+  // ------------------------------------------------------------ hemicycle progress (the IPA motif: one seat per course or unit)
+  // states: "done" (gold), "cur" (gold ring with a centre dot), "todo" (neutral 300), "alum" (neutral 200, read-only)
+  C.hemicycle = (states, label) => {
+    const NS2 = "http://www.w3.org/2000/svg", n = states.length;
+    const svg = document.createElementNS(NS2, "svg");
+    svg.setAttribute("viewBox", "0 0 120 66"); svg.setAttribute("class", "hemi"); svg.setAttribute("role", "img"); svg.setAttribute("aria-label", label);
+    const title = document.createElementNS(NS2, "title"); title.textContent = label; svg.append(title);
+    const arcs = n > 9 ? [[30, Math.round(n * 0.4), 5.5], [50, n - Math.round(n * 0.4), 5.5]] : [[46, n, Math.min(7.5, (Math.PI * 46 / Math.max(n, 1)) * 0.34)]];
+    const seats = [];
+    arcs.forEach(([R, k, r]) => { for (let i = 0; i < k; i++) { const a = k === 1 ? 90 : 170 - i * 160 / (k - 1); seats.push({ a, x: 60 + R * Math.cos(a * Math.PI / 180), y: 60 - R * Math.sin(a * Math.PI / 180), r }); } });
+    seats.sort((p, q) => q.a - p.a || p.y - q.y);
+    const circle = (x, y, r, cls) => { const c = document.createElementNS(NS2, "circle"); c.setAttribute("cx", x.toFixed(1)); c.setAttribute("cy", y.toFixed(1)); c.setAttribute("r", r.toFixed(1)); c.setAttribute("class", cls); svg.append(c); };
+    seats.forEach((p, i) => { const st = states[i] || "todo"; if (st === "cur") { circle(p.x, p.y, p.r - 1, "s-cur"); circle(p.x, p.y, p.r * 0.38, "s-dot"); } else circle(p.x, p.y, p.r, "s-" + st); });
+    return svg;
+  };
+
+  // ------------------------------------------------------------ the Assessments hub: one tab bar on exams, quizzes and practice questions
+  C.hubTabs = (active) => {
+    const c = C.Q.get("c"), q = c && C.course(c) ? "?c=" + encodeURIComponent(c) : "";
+    return el("nav", { class: "hubtabs", "aria-label": "Assessments, quizzes and practice questions" },
+      ...[["exams", "exams.html", "Assessments"], ["quizzes", "quizzes.html", "Quizzes"], ["pastq", "pastq.html", "Practice questions"]]
+        .map(([k, h, t]) => el("a", { href: h + q, class: k === active ? "on" : "", "aria-current": k === active ? "page" : null, text: t })));
+  };
 
   // ------------------------------------------------------------ toast & modal
   const toast = el("div", { class: "pt-toast", role: "status", "aria-live": "polite" });
@@ -206,37 +232,43 @@
   };
 
   // ------------------------------------------------------------ top bar
+  // the top menu: six items for participants; alumni, staff and visitors see fewer. Certificates and Help are in the avatar menu.
+  C.isAlumnus = (u) => !!u && u.r === "s" && !C.enrol(u).current.length;
   C.nav = (u) => {
     if (!u) return [["index.html", "Overview", "home"], ["programmes.html", "Programmes", "grid"], ["help.html", "Help", "help"]];
-    if (u.r === "s") return [["dashboard.html", "Dashboard", "home"], ["quizzes.html", "Quizzes", "quiz"], ["exams.html", "Assessments", "clock"], ["live.html", "Live sessions", "video"], ["pastq.html", "Practice questions", "archive"],
-      ["groups.html", "Cohort networks", "users"], ["certificates.html", "Certificates", "check"], ["ai.html", "AI assistant", "spark"], ["programmes.html", "Programmes", "grid"], ["help.html", "Help", "help"]];
-    const n = [["staff.html", "Staff home", "home"]];
-    if (u.r === "t" || u.r === "c" || u.r === "a") n.push(["exams.html", "Assessments", "clock"], ["live.html", "Live sessions", "video"], ["pastq.html", "Practice questions", "archive"]);
+    if (u.r === "s") return C.isAlumnus(u) ? [["dashboard.html", "Dashboard", "home"], ["programmes.html", "Programmes", "grid"], ["groups.html", "Networks", "users"]]
+      : [["dashboard.html", "Dashboard", "home"], ["programmes.html", "Programmes", "grid"], ["live.html", "Live sessions", "video"], ["exams.html", "Assessments", "clock"], ["groups.html", "Networks", "users"], ["ai.html", "AI assistant", "spark"]];
+    const n = [["staff.html", "Staff home", "home"], ["programmes.html", "Programmes", "grid"]];
+    if (u.r === "t" || u.r === "c" || u.r === "a") n.push(["live.html", "Live sessions", "video"], ["exams.html", "Assessments", "clock"]);
     if (u.r === "a" || u.r === "h" || u.r === "sc" || u.r === "c") n.push(["admin.html", "Reports", "chart"]);
-    n.push(["programmes.html", "Programmes", "grid"], ["help.html", "Help", "help"]);
     return n;
   };
+  // the avatar menu: profile, certificates (participants), help, sign out
+  C.accountMenu = (u) => [["profile.html", "My profile and settings", "user"], u.r === "s" ? ["certificates.html", "Certificates", "check"] : null,
+    u.r === "s" && !C.isAlumnus(u) ? ["ai.html#settings", "AI assistant settings", "spark"] : null, ["help.html", "Help", "help"]].filter(Boolean);
   function topbar() {
     const host = C.$("header.top"); if (!host) return;
     const u = C.me(), here = location.pathname.split("/").pop() || "index.html";
     const items = C.nav(u);
     const activeFor = (href) => here === href || (href === "programmes.html" && /^(programme-|course-|forum)/.test(here)) || (href === "dashboard.html" && here === "reader.html")
-      || (href === "groups.html" && here === "group.html") || (href === "live.html" && here === "session.html") || (href === "exams.html" && here === "exam.html") || (href === "quizzes.html" && here === "quiz.html");
+      || (href === "groups.html" && here === "group.html") || (href === "live.html" && here === "session.html") || (href === "exams.html" && /^(exam|quizzes|quiz|pastq)\.html$/.test(here));
     const links = C.$("nav.links", host), mnav = C.$(".mnav", host);
-    links.replaceChildren(...items.map(([h, t]) => el("a", { href: h, class: activeFor(h) ? "on" : "" }, t)));
+    links.replaceChildren(...items.map(([h, t]) => el("a", { href: h, class: activeFor(h) ? "on" : "", "aria-current": activeFor(h) ? "page" : null }, t)));
     mnav.replaceChildren(...items.map(([h, t, ic]) => el("a", { href: h, class: activeFor(h) ? "on" : "" }, icon(ic), t)));
-    if (u) mnav.append(el("a", { href: "profile.html" }, icon("user"), "My profile"), el("a", { href: "#", onclick: (e) => { e.preventDefault(); C.signOut(); } }, icon("back"), "Sign out"));
+    if (u) mnav.append(el("div", { class: "msep", role: "presentation" }), ...C.accountMenu(u).map(([h, t, ic]) => el("a", { href: h, class: activeFor(h) ? "on" : "" }, icon(ic), t)),
+      el("a", { href: "#", onclick: (e) => { e.preventDefault(); C.signOut(); } }, icon("back"), "Sign out"));
     else mnav.append(el("a", { href: "login.html" }, icon("shield"), "Sign in"));
     const right = C.$(".right", host); right.replaceChildren();
     right.append(el("a", { class: "icon-btn", href: "programmes.html#search", "aria-label": "Search courses" }, icon("search", "i lg")));
     if (u) {
       const notes = C.notifications(u), unread = notes.filter((n) => !n.read).length;
-      const bell = el("button", { class: "icon-btn" + (unread ? " dot" : ""), "aria-label": `Notifications (${unread} unread)`, "aria-haspopup": "true" }, icon("bell", "i lg"));
+      const count = el("span", { class: "nbadge", "aria-hidden": "true", text: unread > 9 ? "9+" : unread, hidden: !unread });
+      const bell = el("button", { class: "icon-btn", "aria-label": `Notifications (${unread} unread)`, "aria-haspopup": "true" }, icon("bell", "i lg"), count);
       const pop = el("div", { class: "pop", role: "menu" });
       const fill = () => {
         const list = C.notifications(u);
         pop.replaceChildren(el("div", { class: "pophead" }, el("b", { text: "Notifications" }),
-          el("button", { class: "btn ghost sm", text: "Mark all read", onclick: (e) => { e.stopPropagation(); C.ud(u).set("notifRead", list.map((n) => n.id)); bell.classList.remove("dot"); fill(); } })),
+          el("button", { class: "btn ghost sm", text: "Mark all read", onclick: (e) => { e.stopPropagation(); C.ud(u).set("notifRead", list.map((n) => n.id)); count.hidden = true; bell.setAttribute("aria-label", "Notifications (0 unread)"); fill(); } })),
           ...(list.length ? list.slice(0, 12).map((n) => el("a", { href: n.href, class: "popitem" + (n.read ? "" : " unread"), onclick: () => { const r = new Set(C.ud(u).get("notifRead", [])); r.add(n.id); C.ud(u).set("notifRead", [...r]); } },
             el("span", { text: n.text }), el("small", { text: C.ago(n.at) }))) : [el("p", { class: "small muted pad", text: "No notifications." })]));
       };
@@ -244,9 +276,8 @@
       const av = el("button", { class: "avatar", "aria-label": `Account menu for ${u.n}`, text: u.n.split(" ").map((x) => x[0]).slice(0, 2).join("") });
       const am = el("div", { class: "pop narrow", role: "menu" },
         el("div", { class: "pophead" }, el("div", {}, el("b", { text: u.n }), el("div", { class: "tiny muted", text: `${C.roleName(u)} · ${u.id}` }))),
-        el("a", { class: "popitem", href: "profile.html" }, "My profile and settings"),
-        u.r === "s" ? el("a", { class: "popitem", href: "ai.html#settings" }, "AI assistant settings") : null,
-        el("a", { class: "popitem", href: "#", onclick: (e) => { e.preventDefault(); C.signOut(); } }, "Sign out"));
+        ...C.accountMenu(u).map(([h, t, ic]) => el("a", { class: "popitem", href: h, role: "menuitem" }, icon(ic, "i sm"), t)),
+        el("a", { class: "popitem", href: "#", role: "menuitem", onclick: (e) => { e.preventDefault(); C.signOut(); } }, icon("back", "i sm"), "Sign out"));
       av.addEventListener("click", (e) => { e.stopPropagation(); am.classList.toggle("open"); pop.classList.remove("open"); });
       document.addEventListener("click", () => { pop.classList.remove("open"); am.classList.remove("open"); });
       pop.addEventListener("click", (e) => e.stopPropagation()); am.addEventListener("click", (e) => e.stopPropagation());
@@ -257,7 +288,23 @@
     const brand = C.$(".brand", host); if (brand) brand.href = u ? (u.r === "s" ? "dashboard.html" : "staff.html") : "index.html";
     const mb = C.$("[data-menu]", host);
     mb.addEventListener("click", () => { const o = mnav.classList.toggle("open"); mb.setAttribute("aria-expanded", o); });
+    const lb = u && C.liveBar(u, "global"); if (lb) host.after(lb);
   }
+
+  // ------------------------------------------------------------ Live now: a slim green bar under the top bar while one of the user's sessions is open
+  C.liveNow = (u) => (u && C.liveFor ? C.liveFor(u).filter((s) => s.status !== "cancelled" && C.liveState(s) === "open" && (C.liveCanAttend(u, s) || C.liveCanManage(u, s))) : []);
+  C.liveBar = (u, kind) => {
+    const s = C.liveNow(u)[0];
+    if (!s || (PAGE === "session" && Q.get("s") === s.id)) return null;
+    const mins = Math.round((Date.now() - s.start) / 60000), m = Math.abs(mins);
+    const span = m >= 60 ? `${Math.floor(m / 60)} h ${m % 60} min` : `${m} minute${m === 1 ? "" : "s"}`;
+    const when = mins >= 0 ? (mins === 0 ? "starting now" : `started ${span} ago`) : `starts in ${span}`;
+    const href = "session.html?s=" + encodeURIComponent(s.id);
+    return el("div", { class: "livebar " + kind, role: "region", "aria-label": "Live session open now" }, el("div", { class: "in" },
+      el("span", { class: "pulse", "aria-hidden": "true" }), el("b", { class: "lk", text: "Live now" }),
+      el("a", { class: "lt", href }, el("span", { class: "ltt", text: s.title }), el("span", { class: "lw", text: `${C.course(s.course).code} · ${when}` })),
+      el("a", { class: "btn white sm", href, onclick: (e) => { if (C.liveEnter) { e.preventDefault(); C.liveEnter(u, s); } } }, icon("video", "i sm"), "Join")));
+  };
 
   // ------------------------------------------------------------ prototype navigator
   function protobar() {
@@ -265,7 +312,8 @@
     const S2 = D.screens;
     let idx = S2.findIndex(([u]) => u === here);
     if (idx < 0) idx = S2.findIndex(([u]) => u.split("?")[0] === here.split("?")[0]);
-    const bar = el("div", { class: "pt-bar" }, el("span", { class: "d" }), el("span", { class: "lb", text: "Prototype · not a live service" }));
+    const bar = el("div", { class: "pt-bar", role: "region", "aria-label": "Prototype notice" }, el("span", { class: "d", "aria-hidden": "true" }), el("span", { class: "lb", text: "Prototype · not a live service" }));
+    document.body.classList.add("has-pt");
     const bS = el("button", { type: "button", text: "Screens", "aria-expanded": "false" });
     const bN = el("button", { type: "button", text: "Next ›" });
     const menu = el("div", { class: "pt-menu", role: "menu" }, ...S2.map(([u, t], i) => el("a", { href: u, class: i === idx ? "cur" : "", text: t })));

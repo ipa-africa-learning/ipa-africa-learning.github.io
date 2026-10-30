@@ -67,7 +67,7 @@
     S.set("live:sessions", mine); _all = null;
   }
   C.liveState = (s, now = Date.now()) => s.status === "cancelled" ? "cancelled" : now < s.start - JOIN_BEFORE * MIN ? "upcoming" : now <= s.start + (s.dur + JOIN_AFTER) * MIN ? "open" : "ended";
-  const STATE = { upcoming: ["Scheduled", ""], open: ["Open now", "ok"], ended: ["Ended", "dark"], cancelled: ["Cancelled", "red"] };
+  const STATE = { upcoming: ["Scheduled", ""], open: ["Open now", "ok"], ended: ["Ended", "dark"], cancelled: ["Cancelled", "grey"] };
 
   // who may do what
   const inOffering = (u, s) => u && u.r === "s" && (u.k === s.off || (u.alum || []).some(([, k]) => k === s.off));
@@ -125,6 +125,7 @@
     if (!C.liveCanManage(u, s)) join(u, s);
     location.href = "liveroom.html?s=" + encodeURIComponent(s.id);
   }
+  C.liveEnter = enterRoom;
 
   // ------------------------------------------------------------------ list: all my sessions, or one course's
   function listPage() {
@@ -379,11 +380,11 @@
     const next = list.find((s) => C.liveState(s) !== "ended");
     const lastRec = list.filter((s) => C.liveCanWatch(u, s)).pop();
     const card = el("div", { class: "card pad", id: "clive" }, el("h3", {}, icon("video"), " Live sessions"));
-    if (next) card.append(el("p", { class: "small", style: { margin: "6px 0 8px" } }, el("b", { text: next.title }), el("br"), `${C.fmtTime(next.start)} · ${PROVIDERS[next.prov].name}`),
-      C.liveState(next) === "open" && (C.liveCanAttend(u, next) || C.liveCanManage(u, next)) ? el("button", { class: "btn ok sm", type: "button", onclick: () => enterRoom(u, next) }, icon("video"), "Join now") : null);
+    if (next) card.append(el("p", { class: "small", style: { margin: "6px 0 8px" } }, el("b", { text: next.title }), el("br"), `${C.fmtTime(next.start)} · ${PROVIDERS[next.prov].name}`));
     else card.append(el("p", { class: "small muted", style: { margin: "6px 0 8px" }, text: "No session scheduled." }));
-    if (lastRec) card.append(el("a", { class: "btn sec sm", style: { marginTop: "8px" }, href: `liveroom.html?s=${encodeURIComponent(lastRec.id)}&rec=1` }, "Latest recording"));
-    card.append(el("a", { class: "btn ghost sm", style: { marginTop: "8px" }, href: `live.html?c=${slug}`, text: "All live sessions" }));
+    card.append(el("div", { class: "btns", style: { gap: "8px" } }, next && C.liveState(next) === "open" && (C.liveCanAttend(u, next) || C.liveCanManage(u, next)) ? el("button", { class: "btn ok sm", type: "button", onclick: () => enterRoom(u, next) }, icon("video"), "Join now") : null,
+      lastRec ? el("a", { class: "btn sec sm", href: `liveroom.html?s=${encodeURIComponent(lastRec.id)}&rec=1` }, "Latest recording") : null,
+      el("a", { class: "btn ghost sm", href: `live.html?c=${slug}`, text: "All live sessions" })));
     return card;
   };
 

@@ -1,4 +1,4 @@
-IPA Africa Learning: clickable prototype (version 1.0)
+IPA Africa Learning: clickable prototype (version 1.1)
 Institute of Parliamentary Affairs Africa, October 2026
 
 HOW TO OPEN
